@@ -28,7 +28,8 @@
          ssl=false,
          ssl_opts=[{ssl_imp, new}],
          acceptor_pool=sets:new(),
-         profile_fun=undefined}).
+         profile_fun=undefined,
+         spawn_opts=[]}).
 
 -define(is_old_state(State), not is_record(State, mochiweb_socket_server)).
 
@@ -129,7 +130,9 @@ parse_options([{ssl_opts, SslOpts} | Rest], State) when is_list(SslOpts) ->
     SslOpts1 = [{ssl_imp, new} | proplists:delete(ssl_imp, SslOpts)],
     parse_options(Rest, State#mochiweb_socket_server{ssl_opts=SslOpts1});
 parse_options([{profile_fun, ProfileFun} | Rest], State) when is_function(ProfileFun) ->
-    parse_options(Rest, State#mochiweb_socket_server{profile_fun=ProfileFun}).
+    parse_options(Rest, State#mochiweb_socket_server{profile_fun=ProfileFun});
+parse_options([{spawn_opts, SpawnOpts} | Rest], State) when is_list(SpawnOpts) ->
+    parse_options(Rest, State#mochiweb_socket_server{spawn_opts=SpawnOpts}).
 
 
 start_server(F, State=#mochiweb_socket_server{ssl=Ssl, name=Name}) ->
@@ -188,9 +191,10 @@ init(State=#mochiweb_socket_server{ip=Ip, port=Port, backlog=Backlog, nodelay=No
 new_acceptor_pool(Listen,
                   State=#mochiweb_socket_server{acceptor_pool=Pool,
                                                 acceptor_pool_size=Size,
-                                                loop=Loop}) ->
+                                                loop=Loop,
+                                                spawn_opts=SpawnOpts}) ->
     F = fun (_, S) ->
-                Pid = mochiweb_acceptor:start_link(self(), Listen, Loop),
+                Pid = mochiweb_acceptor:start_link(self(), Listen, Loop, SpawnOpts),
                 sets:add_element(Pid, S)
         end,
     Pool1 = lists:foldl(F, Pool, lists:seq(1, Size)),
@@ -283,13 +287,14 @@ recycle_acceptor(Pid, State=#mochiweb_socket_server{
                         listen=Listen,
                         loop=Loop,
                         max=Max,
-                        active_sockets=ActiveSockets}) ->
+                        active_sockets=ActiveSockets,
+                        spawn_opts=SpawnOpts}) ->
     case sets:is_element(Pid, Pool) of
         true ->
             Pool1 = sets:del_element(Pid, Pool),
             case ActiveSockets + sets:size(Pool1) < Max of
                 true ->
-                    Acceptor = mochiweb_acceptor:start_link(self(), Listen, Loop),
+                    Acceptor = mochiweb_acceptor:start_link(self(), Listen, Loop, SpawnOpts),
                     Pool2 = sets:add_element(Acceptor, Pool1),
                     State#mochiweb_socket_server{acceptor_pool=Pool2};
                 false ->
@@ -298,7 +303,7 @@ recycle_acceptor(Pid, State=#mochiweb_socket_server{
         false ->
             case sets:size(Pool) < PoolSize of
                 true ->
-                    Acceptor = mochiweb_acceptor:start_link(self(), Listen, Loop),
+                    Acceptor = mochiweb_acceptor:start_link(self(), Listen, Loop, SpawnOpts),
                     Pool1 = sets:add_element(Acceptor, Pool),
                     State#mochiweb_socket_server{active_sockets=ActiveSockets,
                                                  acceptor_pool=Pool1};

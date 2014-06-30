@@ -8,10 +8,10 @@
 
 -include("internal.hrl").
 
--export([start_link/3, init/3]).
+-export([start_link/4, init/3]).
 
-start_link(Server, Listen, Loop) ->
-    proc_lib:spawn_link(?MODULE, init, [Server, Listen, Loop]).
+start_link(Server, Listen, Loop, SpawnOpts) ->
+    proc_lib:spawn_opt(?MODULE, init, [Server, Listen, Loop], [link | SpawnOpts]).
 
 init(Server, Listen, Loop) ->
     T1 = os:timestamp(),
